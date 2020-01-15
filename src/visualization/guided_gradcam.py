@@ -4,12 +4,14 @@ Created on Thu Oct 23 11:27:15 2017
 @author: Utku Ozbulak - github.com/utkuozbulak
 """
 import numpy as np
-
-from misc_functions import (get_example_params,
+import os
+from PIL import Image
+from utils.misc import (get_example_params,
                             convert_to_grayscale,
-                            save_gradient_images)
-from gradcam import GradCam
-from guided_backprop import GuidedBackprop
+                            save_gradient_images,
+                            preprocess_image)
+from visualization.gradcam import GradCam
+from visualization.guided_backprop import GuidedBackprop
 
 
 def guided_grad_cam(grad_cam_mask, guided_backprop_mask):
@@ -23,6 +25,33 @@ def guided_grad_cam(grad_cam_mask, guided_backprop_mask):
     """
     cam_gb = np.multiply(grad_cam_mask, guided_backprop_mask)
     return cam_gb
+
+def guide_grad_cam_test(model, img, target_cls, target_layer, dst, desc):
+    img = Image.open(img).convert('RGB')
+    prep_img = preprocess_image(img)
+
+    # Grad cam
+    gcv2 = GradCam(model, target_layer=target_layer)
+    # Generate cam mask
+    cam = gcv2.generate_cam(prep_img, target_cls)
+    print('Grad cam completed')
+
+    # Guided backprop
+    GBP = GuidedBackprop(model)
+    # Get gradients
+    guided_grads = GBP.generate_gradients(prep_img, target_cls)
+    print('Guided backpropagation completed')
+
+    # Guided Grad cam
+    cam_gb = guided_grad_cam(cam, guided_grads)
+
+    filename = os.path.join(dst, desc + '_ggrad_cam.jpg')
+    save_gradient_images(cam_gb, filename)
+
+    grayscale_cam_gb = convert_to_grayscale(cam_gb)
+    filename = os.path.join(dst, desc + 'ggrad_cam_gray.jpg')
+    save_gradient_images(grayscale_cam_gb, filename)
+    print('Guided grad cam completed')
 
 
 if __name__ == '__main__':

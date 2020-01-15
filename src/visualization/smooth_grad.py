@@ -8,10 +8,11 @@ import numpy as np
 from torch.autograd import Variable
 import torch
 
-from misc_functions import (get_example_params,
+from utils.misc import (get_example_params,
                             convert_to_grayscale,
-                            save_gradient_images)
-from vanilla_backprop import VanillaBackprop
+                            save_gradient_images, preprocess_image)
+
+from visualization.vanilla_backprop import VanillaBackprop
 # from guided_backprop import GuidedBackprop  # To use with guided backprop
 
 
@@ -44,6 +45,33 @@ def generate_smooth_grad(Backprop, prep_img, target_class, param_n, param_sigma_
     smooth_grad = smooth_grad / param_n
     return smooth_grad
 
+def smooth_grad_test(model, img, target_cls, dst, param_n, param_sigma_mult, desc):
+    VBP = VanillaBackprop(model)
+    # GBP = GuidedBackprop(pretrained_model)  # if you want to use GBP dont forget to
+    # change the parametre in generate_smooth_grad
+    from PIL import Image
+    from utils.misc import preprocess_image
+    img = Image.open(img).convert("RGB")
+    prep_img = preprocess_image(img)
+
+    param_n = param_n
+    param_sigma_multiplier = param_sigma_mult
+    smooth_grad = generate_smooth_grad(VBP,  # ^This parameter
+                                       prep_img,
+                                       target_cls,
+                                       param_n,
+                                       param_sigma_multiplier)
+
+    import os
+    # Save colored gradients
+    filename = os.path.join(dst, desc + '_smooth_grad_color.jpg')
+    save_gradient_images(smooth_grad, filename)
+    # Convert to grayscale
+    grayscale_smooth_grad = convert_to_grayscale(smooth_grad)
+    # Save grayscale gradients
+    filename = os.path.join(dst, desc + '_smooth_grad_gray.jpg')
+    save_gradient_images(grayscale_smooth_grad, filename)
+    print('Smooth grad completed')
 
 if __name__ == '__main__':
     # Get params

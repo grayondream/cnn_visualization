@@ -6,7 +6,7 @@ Created on Wed Jun 19 17:06:48 2019
 import torch
 import numpy as np
 
-from misc_functions import get_example_params, convert_to_grayscale, save_gradient_images
+from  utils.misc import get_example_params, convert_to_grayscale, save_gradient_images, preprocess_image
 
 
 class IntegratedGradients():
@@ -14,6 +14,7 @@ class IntegratedGradients():
         Produces gradients generated with integrated gradients from the image
     """
     def __init__(self, model):
+        self.features = list(model.children())
         self.model = model
         self.gradients = None
         # Put model in evaluation mode
@@ -26,7 +27,7 @@ class IntegratedGradients():
             self.gradients = grad_in[0]
 
         # Register hook to the first layer
-        first_layer = list(self.model.features._modules.items())[0][1]
+        first_layer = self.features[0]
         first_layer.register_backward_hook(hook_function)
 
     def generate_images_on_linear_path(self, input_image, steps):
@@ -64,6 +65,21 @@ class IntegratedGradients():
         # [0] to get rid of the first channel (1,3,224,224)
         return integrated_grads[0]
 
+def integraded_gradients_test(model, img, target_cls, dst, desc):
+    from PIL import Image
+    img = Image.open(img).convert("RGB")
+    prep_img = preprocess_image(img)
+    # Vanilla backprop
+    IG = IntegratedGradients(model)
+    # Generate gradients
+    integrated_grads = IG.generate_integrated_gradients(prep_img, target_cls, 100)
+    # Convert to grayscale
+    grayscale_integrated_grads = convert_to_grayscale(integrated_grads)
+    # Save grayscale gradients
+    import os
+    filename = os.path.join(dst, desc + "intergraded_gray.jpg")
+    save_gradient_images(grayscale_integrated_grads, filename)
+    print('Integrated gradients completed.')
 
 if __name__ == '__main__':
     # Get params

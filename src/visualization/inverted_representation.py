@@ -8,15 +8,17 @@ from torch.autograd import Variable
 from torch.optim import SGD
 import os
 
-from misc_functions import get_example_params, recreate_image, save_image
+from utils.misc import get_example_params, recreate_image, save_image, preprocess_image
+from PIL import Image
+import os
 
 
 class InvertedRepresentation():
-    def __init__(self, model):
+    def __init__(self, model, dst):
         self.model = model
         self.model.eval()
-        if not os.path.exists('../generated'):
-            os.makedirs('../generated')
+        self.features = list(model.children())
+        self.dst = dst
 
     def alpha_norm(self, input_matrix, alpha):
         """
@@ -54,7 +56,7 @@ class InvertedRepresentation():
             but this one is simpler (I think)
         """
         layer_output = None
-        for index, layer in enumerate(self.model.features):
+        for index, layer in enumerate(self.features):
             x = layer(x)
             if str(index) == str(layer_id):
                 layer_output = x[0]
@@ -104,8 +106,8 @@ class InvertedRepresentation():
             if i % 5 == 0:
                 print('Iteration:', str(i), 'Loss:', loss.data.numpy())
                 recreated_im = recreate_image(opt_img)
-                im_path = '../generated/Inv_Image_Layer_' + str(target_layer) + \
-                    '_Iteration_' + str(i) + '.jpg'
+                im_path = os.path.join(self.dst, 'Inv_Image_Layer_' + str(target_layer) + \
+                    '_Iteration_' + str(i) + '.jpg')
                 save_image(recreated_im, im_path)
 
             # Reduce learning rate every 40 iterations

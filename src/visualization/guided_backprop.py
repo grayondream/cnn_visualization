@@ -11,12 +11,16 @@ from utils.misc import (get_example_params,
                             save_gradient_images,
                             get_positive_negative_saliency)
 
+from utils.misc import preprocess_image
+from PIL import Image
+import os
 
 class GuidedBackprop():
     """
        Produces gradients generated with guided back propagation from the given image
     """
     def __init__(self, model):
+        self.features = list(model.children())
         self.model = model
         self.gradients = None
         self.forward_relu_outputs = []
@@ -29,7 +33,7 @@ class GuidedBackprop():
         def hook_function(module, grad_in, grad_out):
             self.gradients = grad_in[0]
         # Register hook to the first layer
-        first_layer = list(self.model.features._modules.items())[0][1]
+        first_layer = self.features[0]
         first_layer.register_backward_hook(hook_function)
 
     def update_relus(self):
@@ -56,7 +60,7 @@ class GuidedBackprop():
             self.forward_relu_outputs.append(ten_out)
 
         # Loop through layers, hook up ReLUs
-        for pos, module in self.model.features._modules.items():
+        for module in self.features:
             if isinstance(module, ReLU):
                 module.register_backward_hook(relu_backward_hook_function)
                 module.register_forward_hook(relu_forward_hook_function)
@@ -75,6 +79,30 @@ class GuidedBackprop():
         # [0] to get rid of the first channel (1,3,224,224)
         gradients_as_arr = self.gradients.data.numpy()[0]
         return gradients_as_arr
+
+def guided_backprop(model, original_image, target_class, dst, desc):
+    original_image = Image.open(original_image).convert('RGB')
+    prep_img = preprocess_image(original_image)
+    # Guided backprop
+    GBP = GuidedBackprop(model)
+    # Get gradients
+    guided_grads = GBP.generate_gradients(prep_img, target_class)
+    # Save colored gradients
+    filename = os.path.join(dst, desc + '_guided_bp_color.jpg')
+    save_gradient_images(guided_grads, filename)
+    # Convert to grayscale
+    grayscale_guided_grads = convert_to_grayscale(guided_grads)
+
+    # Save grayscale gradients
+    filename = os.path.join(dst, desc + '_guided_bp_gray.jpg')
+    save_gradient_images(grayscale_guided_grads, filename)
+    # Positive and negative saliency maps
+    pos_sal, neg_sal = get_positive_negative_saliency(guided_grads)
+    filename = os.path.join(dst, desc + '_pos_sal.jpg')
+    save_gradient_images(pos_sal, filename)
+    filename = os.path.join(dst, desc + '_neg_sal.jpg')
+    save_gradient_images(neg_sal, filename)
+
 
 
 if __name__ == '__main__':

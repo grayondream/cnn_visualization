@@ -5,11 +5,13 @@ Created on Thu Oct 26 11:23:47 2017
 """
 import torch
 from torch.nn import ReLU
-
-from misc_functions import (get_example_params,
+import os
+from PIL import Image
+from utils.misc import (get_example_params,
                             convert_to_grayscale,
                             save_gradient_images,
-                            get_positive_negative_saliency)
+                            get_positive_negative_saliency,
+                            preprocess_image)
 
 
 class GuidedBackprop():
@@ -21,6 +23,7 @@ class GuidedBackprop():
         self.gradients = None
         self.forward_relu_outputs = []
         # Put model in evaluation mode
+        self.features = list(model.children())
         self.model.eval()
         self.update_relus()
         self.hook_layers()
@@ -29,7 +32,7 @@ class GuidedBackprop():
         def hook_function(module, grad_in, grad_out):
             self.gradients = grad_in[0]
         # Register hook to the first layer
-        first_layer = list(self.model.features._modules.items())[0][1]
+        first_layer = self.features[0]
         first_layer.register_backward_hook(hook_function)
 
     def update_relus(self):
@@ -56,7 +59,7 @@ class GuidedBackprop():
             self.forward_relu_outputs.append(ten_out)
 
         # Loop through layers, hook up ReLUs
-        for pos, module in self.model.features._modules.items():
+        for module in self.features:
             if isinstance(module, ReLU):
                 module.register_backward_hook(relu_backward_hook_function)
                 module.register_forward_hook(relu_forward_hook_function)
@@ -65,7 +68,7 @@ class GuidedBackprop():
         self.model.zero_grad()
         # Forward pass
         x = input_image
-        for index, layer in enumerate(self.model.features):
+        for index, layer in enumerate(self.features):
             # Forward pass layer by layer
             # x is not used after this point because it is only needed to trigger
             # the forward hook function
@@ -82,6 +85,33 @@ class GuidedBackprop():
         gradients_as_arr = self.gradients.data.numpy()[0]
         return gradients_as_arr
 
+
+def layer_activation_guided_backprop_test(model, img, target_layer, target_pos, target_class, dst, desc):
+    img = Image.open(img).convert("RGB")
+    img = preprocess_image(img)
+    # File export name
+    filename = os.path.join(dst, '%s_layer_%d_filter_%d.jpg' % (desc, target_layer, target_pos))
+    # Guided backprop
+    GBP = GuidedBackprop(model)
+    # Get gradients
+    guided_grads = GBP.generate_gradients(img, target_class, target_layer, target_pos)
+    # Save colored gradients
+    filename = os.path.join(dst, desc + '_guided_bp_color.jpg')
+    save_gradient_images(guided_grads, filename)
+    # Convert to grayscale
+    grayscale_guided_grads = convert_to_grayscale(guided_grads)
+    # Save grayscale gradients
+    filename = os.path.join(dst, desc + '_guided_bp_gray.jpg')
+    save_gradient_images(grayscale_guided_grads, filename)
+    # Positive and negative saliency maps
+    pos_sal, neg_sal = get_positive_negative_saliency(guided_grads)
+    filename = os.path.join(dst, desc + '_pos_sal.jpg')
+    save_gradient_images(pos_sal, filename)
+
+    filename = os.path.join(dst, desc + '_neg_sal.jpg')
+    save_gradient_images(neg_sal, filename)
+
+    print('Layer Guided backprop completed')
 
 if __name__ == '__main__':
     cnn_layer = 10
